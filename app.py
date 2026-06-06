@@ -4,12 +4,12 @@ import pymysql
 import os
 from dotenv import load_dotenv
 from datetime import datetime
- 
+
 load_dotenv()
- 
+
 app = Flask(__name__)
 CORS(app)
- 
+
 def get_connection():
     return pymysql.connect(
         host=os.getenv('TIDB_HOST'),
@@ -20,18 +20,18 @@ def get_connection():
         ssl={'ca': None},
         cursorclass=pymysql.cursors.DictCursor
     )
- 
+
 @app.route('/')
 def home():
     return jsonify({'mensagem': 'API da Escolinha do Jacaré funcionando!'})
- 
+
 @app.route('/api/prematricula', methods=['POST'])
 def prematricula():
     dados = request.json
- 
+
     def safe_str(valor):
         return '' if valor is None else str(valor)
- 
+
     def safe_int(valor):
         if valor is None or valor == '':
             return 0
@@ -39,7 +39,7 @@ def prematricula():
             return int(float(valor))
         except:
             return 0
- 
+
     def safe_int_min1(valor):
         if valor is None or valor == '':
             return 1
@@ -47,7 +47,7 @@ def prematricula():
             return int(float(valor))
         except:
             return 1
- 
+
     def safe_float(valor):
         if valor is None or valor == '':
             return 0
@@ -55,16 +55,16 @@ def prematricula():
             return float(valor)
         except:
             return 0
- 
+
     protocolo = safe_str(dados.get('protocolo'))
- 
+
     data_envio_raw = safe_str(dados.get('dataEnvio'))
     try:
         dt = datetime.strptime(data_envio_raw, "%d/%m/%Y, %H:%M:%S")
         data_envio = dt.strftime("%Y-%m-%d %H:%M:%S")
     except:
         data_envio = data_envio_raw.replace('/', '-').replace(',', '')
- 
+
     nome_aluno = safe_str(dados.get('nomeAluno'))
     data_nasc = safe_str(dados.get('dataNasc'))
     idade = safe_int(dados.get('idade'))
@@ -95,25 +95,25 @@ def prematricula():
     observacao = safe_str(dados.get('observacao'))
     estrelas = safe_int(dados.get('estrelas'))
     status = 'pendente'
- 
+
     print(f"📥 Recebido: {nome_aluno}, Idade: {idade}, Tamanho: {tamanho_uniforme}")
- 
+
     try:
         conn = get_connection()
         cursor = conn.cursor()
- 
+
         cursor.execute("""
             SELECT COUNT(*) as total FROM alunos
             WHERE rg = %s AND responsavel = %s AND nome_aluno = %s
         """, (rg, responsavel, nome_aluno))
- 
+
         resultado = cursor.fetchone()
- 
+
         if resultado['total'] > 0:
             cursor.close()
             conn.close()
             return jsonify({'erro': 'Aluno já cadastrado'}), 409
- 
+
         sql = """
             INSERT INTO alunos (
                 protocolo, data_envio, nome_aluno, data_nasc, idade, turma,
@@ -127,7 +127,7 @@ def prematricula():
                 %s, %s, %s, %s, %s, %s, %s
             )
         """
- 
+
         valores = (
             protocolo, data_envio, nome_aluno, data_nasc, idade, turma, categoria,
             responsavel, tipo_vinculo, sexo_responsavel, telefone, email,
@@ -135,21 +135,21 @@ def prematricula():
             peso, altura, calcado, tamanho_uniforme, deficiencia, municipio,
             uf, escola, serie, status, possui_uniforme, observacao, estrelas
         )
- 
+
         cursor.execute(sql, valores)
         conn.commit()
         cursor.close()
         conn.close()
- 
+
         print(f"✅ Aluno salvo! Protocolo: {protocolo}")
         return jsonify({'mensagem': 'Pré-matrícula enviada com sucesso!', 'protocolo': protocolo}), 201
- 
+
     except Exception as e:
         print(f"❌ Erro: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'erro': str(e)}), 500
- 
+
 @app.route('/api/elogios', methods=['GET'])
 def get_elogios():
     try:
@@ -168,7 +168,7 @@ def get_elogios():
         return jsonify(elogios), 200
     except Exception as e:
         return jsonify({'erro': 'Erro ao buscar elogios'}), 500
- 
+
 @app.route('/api/alunos', methods=['GET'])
 def get_alunos():
     try:
@@ -181,7 +181,7 @@ def get_alunos():
         return jsonify(alunos), 200
     except Exception as e:
         return jsonify({'erro': 'Erro ao buscar alunos'}), 500
- 
+
 @app.route('/api/aluno/<protocolo>', methods=['PUT'])
 def atualizar_status(protocolo):
     dados = request.json
@@ -196,7 +196,7 @@ def atualizar_status(protocolo):
         return jsonify({'mensagem': f'Status atualizado para {novo_status}'}), 200
     except Exception as e:
         return jsonify({'erro': 'Erro ao atualizar status'}), 500
- 
+
 @app.route('/api/aluno/<protocolo>', methods=['DELETE'])
 def deletar_aluno(protocolo):
     try:
@@ -210,7 +210,7 @@ def deletar_aluno(protocolo):
         return jsonify({'mensagem': 'Aluno deletado com sucesso'}), 200
     except Exception as e:
         return jsonify({'erro': 'Erro ao deletar aluno'}), 500
- 
+
 @app.route('/api/status', methods=['GET'])
 def get_status():
     try:
@@ -224,7 +224,7 @@ def get_status():
         return jsonify({'online': online}), 200
     except Exception as e:
         return jsonify({'online': False}), 200
- 
+
 @app.route('/api/status', methods=['POST'])
 def set_status():
     dados = request.json
@@ -246,6 +246,42 @@ def set_status():
     except Exception as e:
         print(f"Erro: {e}")
         return jsonify({'erro': 'Erro ao atualizar status'}), 500
- 
+
+@app.route('/api/contatos', methods=['GET'])
+def get_contatos():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM contatos ORDER BY data_envio DESC")
+        contatos = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify(contatos), 200
+    except Exception as e:
+        return jsonify({'erro': 'Erro ao buscar contatos'}), 500
+
+@app.route('/api/contatos', methods=['POST'])
+def salvar_contato():
+    dados = request.json
+    nome = dados.get('nome', '')
+    whatsapp = dados.get('whatsapp', '')
+    assunto = dados.get('assunto', '')
+    mensagem = dados.get('mensagem', '')
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO contatos (nome, whatsapp, assunto, mensagem)
+            VALUES (%s, %s, %s, %s)
+        """, (nome, whatsapp, assunto, mensagem))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"📬 Contato salvo: {nome} - {assunto}")
+        return jsonify({'mensagem': 'Contato salvo com sucesso!'}), 201
+    except Exception as e:
+        print(f"Erro: {e}")
+        return jsonify({'erro': 'Erro ao salvar contato'}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
