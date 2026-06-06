@@ -211,6 +211,20 @@ def deletar_aluno(protocolo):
     except Exception as e:
         return jsonify({'erro': 'Erro ao deletar aluno'}), 500
 
+@app.route('/api/contatos/<int:id>', methods=['DELETE'])
+def deletar_contato(id):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM contatos WHERE id = %s", (id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"🗑️ Contato deletado: {id}")
+        return jsonify({'mensagem': 'Contato deletado com sucesso'}), 200
+    except Exception as e:
+        return jsonify({'erro': 'Erro ao deletar contato'}), 500
+
 @app.route('/api/status', methods=['GET'])
 def get_status():
     try:
