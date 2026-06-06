@@ -17,14 +17,21 @@ from firebase_admin import credentials, messaging
 
 def init_firebase():
     if not firebase_admin._apps:
-        cred_json = os.getenv('FIREBASE_CREDENTIALS')
-        if cred_json:
-            cred_dict = json.loads(cred_json)
-            cred = credentials.Certificate(cred_dict)
+        # Tenta arquivo secret primeiro, depois variável de ambiente
+        secret_path = '/etc/secrets/firebase.json' if os.path.exists('/etc/secrets/firebase.json') else 'firebase.json'
+        if os.path.exists(secret_path):
+            cred = credentials.Certificate(secret_path)
             firebase_admin.initialize_app(cred)
-            print("✅ Firebase Admin inicializado!")
+            print("✅ Firebase Admin inicializado via arquivo!")
         else:
-            print("⚠️ FIREBASE_CREDENTIALS não encontrada")
+            cred_json = os.getenv('FIREBASE_CREDENTIALS')
+            if cred_json:
+                cred_dict = json.loads(cred_json)
+                cred = credentials.Certificate(cred_dict)
+                firebase_admin.initialize_app(cred)
+                print("✅ Firebase Admin inicializado via variável!")
+            else:
+                print("⚠️ FIREBASE_CREDENTIALS não encontrada")
 
 init_firebase()
 
