@@ -1,6 +1,4 @@
 flask
 flask-cors
-pymysql
-python-dotenv
-gunicorn
-firebase-admin
+psycopg2-binary
+python-dotenv 
