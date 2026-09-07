@@ -1,8 +1,8 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pymysql
+import psycopg2
+import psycopg2.extras
 import os
-import json
 from dotenv import load_dotenv
 from datetime import datetime
 
@@ -11,74 +11,16 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-# Firebase Admin
-import firebase_admin
-from firebase_admin import credentials, messaging
-
-def init_firebase():
-    if not firebase_admin._apps:
-        # Tenta arquivo secret primeiro, depois variável de ambiente
-        secret_path = '/etc/secrets/firebase.json' if os.path.exists('/etc/secrets/firebase.json') else 'firebase.json'
-        if os.path.exists(secret_path):
-            cred = credentials.Certificate(secret_path)
-            firebase_admin.initialize_app(cred)
-            print("✅ Firebase Admin inicializado via arquivo!")
-        else:
-            cred_json = os.getenv('FIREBASE_CREDENTIALS')
-            if cred_json:
-                cred_dict = json.loads(cred_json)
-                cred = credentials.Certificate(cred_dict)
-                firebase_admin.initialize_app(cred)
-                print("✅ Firebase Admin inicializado via variável!")
-            else:
-                print("⚠️ FIREBASE_CREDENTIALS não encontrada")
-
-init_firebase()
-
 def get_connection():
-    return pymysql.connect(
-        host=os.getenv('TIDB_HOST'),
-        port=int(os.getenv('TIDB_PORT', 4000)),
-        user=os.getenv('TIDB_USER'),
-        password=os.getenv('TIDB_PASSWORD'),
-        database=os.getenv('TIDB_DATABASE'),
-        ssl={'ca': None},
-        cursorclass=pymysql.cursors.DictCursor
+    return psycopg2.connect(
+        host=os.getenv('NEON_HOST'),
+        port=int(os.getenv('NEON_PORT', 5432)),
+        user=os.getenv('NEON_USER'),
+        password=os.getenv('NEON_PASSWORD'),
+        database=os.getenv('NEON_DATABASE'),
+        sslmode='require',
+        cursor_factory=psycopg2.extras.RealDictCursor
     )
-
-def enviar_push(titulo, corpo):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT valor FROM configuracoes WHERE chave LIKE 'fcm_token_%'")
-        tokens = [row['valor'] for row in cursor.fetchall()]
-        cursor.close()
-        conn.close()
-
-        if not tokens:
-            print("Nenhum token FCM registrado")
-            return
-
-        for token in tokens:
-            try:
-                msg = messaging.Message(
-                    notification=messaging.Notification(title=titulo, body=corpo),
-                    token=token,
-                    android=messaging.AndroidConfig(priority='high'),
-                    webpush=messaging.WebpushConfig(
-                        notification=messaging.WebpushNotification(
-                            title=titulo,
-                            body=corpo,
-                            icon='/escolinha-jacare/icones/icon-192.png'
-                        )
-                    )
-                )
-                messaging.send(msg)
-                print(f"📲 Notificação enviada para {token[:20]}...")
-            except Exception as e:
-                print(f"Erro ao enviar para token {token[:20]}: {e}")
-    except Exception as e:
-        print(f"Erro geral push: {e}")
 
 @app.route('/')
 def home():
@@ -92,21 +34,31 @@ def prematricula():
         return '' if valor is None else str(valor)
 
     def safe_int(valor):
-        if valor is None or valor == '': return 0
-        try: return int(float(valor))
-        except: return 0
+        if valor is None or valor == '':
+            return 0
+        try:
+            return int(float(valor))
+        except:
+            return 0
 
     def safe_int_min1(valor):
-        if valor is None or valor == '': return 1
-        try: return int(float(valor))
-        except: return 1
+        if valor is None or valor == '':
+            return 1
+        try:
+            return int(float(valor))
+        except:
+            return 1
 
     def safe_float(valor):
-        if valor is None or valor == '': return 0
-        try: return float(valor)
-        except: return 0
+        if valor is None or valor == '':
+            return 0
+        try:
+            return float(valor)
+        except:
+            return 0
 
     protocolo = safe_str(dados.get('protocolo'))
+
     data_envio_raw = safe_str(dados.get('dataEnvio'))
     try:
         dt = datetime.strptime(data_envio_raw, "%d/%m/%Y, %H:%M:%S")
@@ -145,15 +97,17 @@ def prematricula():
     estrelas = safe_int(dados.get('estrelas'))
     status = 'pendente'
 
-    print(f"📥 Recebido: {nome_aluno}, Idade: {idade}")
+    print(f"📥 Recebido: {nome_aluno}, Idade: {idade}, Tamanho: {tamanho_uniforme}")
 
     try:
         conn = get_connection()
         cursor = conn.cursor()
+
         cursor.execute("""
             SELECT COUNT(*) as total FROM alunos
             WHERE rg = %s AND responsavel = %s AND nome_aluno = %s
         """, (rg, responsavel, nome_aluno))
+
         resultado = cursor.fetchone()
 
         if resultado['total'] > 0:
@@ -174,6 +128,7 @@ def prematricula():
                 %s, %s, %s, %s, %s, %s, %s
             )
         """
+
         valores = (
             protocolo, data_envio, nome_aluno, data_nasc, idade, turma, categoria,
             responsavel, tipo_vinculo, sexo_responsavel, telefone, email,
@@ -181,14 +136,13 @@ def prematricula():
             peso, altura, calcado, tamanho_uniforme, deficiencia, municipio,
             uf, escola, serie, status, possui_uniforme, observacao, estrelas
         )
+
         cursor.execute(sql, valores)
         conn.commit()
         cursor.close()
         conn.close()
 
         print(f"✅ Aluno salvo! Protocolo: {protocolo}")
-        # Notificação push
-        enviar_push(f"📝 Nova pré-matrícula!", f"{nome_aluno} • {turma} • {categoria}")
         return jsonify({'mensagem': 'Pré-matrícula enviada com sucesso!', 'protocolo': protocolo}), 201
 
     except Exception as e:
@@ -204,8 +158,10 @@ def get_elogios():
         cursor = conn.cursor()
         cursor.execute("""
             SELECT nome_aluno, observacao, data_envio, estrelas
-            FROM alunos WHERE observacao IS NOT NULL AND observacao != ''
-            ORDER BY data_envio DESC LIMIT 50
+            FROM alunos
+            WHERE observacao IS NOT NULL AND observacao != ''
+            ORDER BY data_envio DESC
+            LIMIT 50
         """)
         elogios = cursor.fetchall()
         cursor.close()
@@ -256,81 +212,6 @@ def deletar_aluno(protocolo):
     except Exception as e:
         return jsonify({'erro': 'Erro ao deletar aluno'}), 500
 
-@app.route('/api/contatos', methods=['GET'])
-def get_contatos():
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM contatos ORDER BY data_envio DESC")
-        contatos = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return jsonify(contatos), 200
-    except Exception as e:
-        return jsonify({'erro': 'Erro ao buscar contatos'}), 500
-
-@app.route('/api/contatos', methods=['POST'])
-def salvar_contato():
-    dados = request.json
-    nome = dados.get('nome', '')
-    whatsapp = dados.get('whatsapp', '')
-    assunto = dados.get('assunto', '')
-    mensagem = dados.get('mensagem', '')
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO contatos (nome, whatsapp, assunto, mensagem)
-            VALUES (%s, %s, %s, %s)
-        """, (nome, whatsapp, assunto, mensagem))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        print(f"📬 Contato salvo: {nome} - {assunto}")
-        enviar_push(f"📬 Nova mensagem de {nome}", f"{assunto}: {mensagem[:80]}")
-        return jsonify({'mensagem': 'Contato salvo com sucesso!'}), 201
-    except Exception as e:
-        print(f"Erro: {e}")
-        return jsonify({'erro': 'Erro ao salvar contato'}), 500
-
-@app.route('/api/contatos/<int:id>', methods=['DELETE'])
-def deletar_contato(id):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM contatos WHERE id = %s", (id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        print(f"🗑️ Contato deletado: {id}")
-        return jsonify({'mensagem': 'Contato deletado com sucesso'}), 200
-    except Exception as e:
-        return jsonify({'erro': 'Erro ao deletar contato'}), 500
-
-@app.route('/api/fcm-token', methods=['POST'])
-def salvar_fcm_token():
-    dados = request.json
-    token = dados.get('token', '')
-    if not token:
-        return jsonify({'erro': 'Token vazio'}), 400
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        chave = f'fcm_token_{token[:30]}'
-        cursor.execute("""
-            INSERT INTO configuracoes (chave, valor)
-            VALUES (%s, %s)
-            ON DUPLICATE KEY UPDATE valor = %s
-        """, (chave, token, token))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        print(f"📲 FCM token salvo: {token[:20]}...")
-        return jsonify({'mensagem': 'Token salvo!'}), 200
-    except Exception as e:
-        print(f"Erro token: {e}")
-        return jsonify({'erro': str(e)}), 500
-
 @app.route('/api/status', methods=['GET'])
 def get_status():
     try:
@@ -356,8 +237,8 @@ def set_status():
         cursor.execute("""
             INSERT INTO configuracoes (chave, valor)
             VALUES ('status_online', %s)
-            ON DUPLICATE KEY UPDATE valor = %s
-        """, (valor, valor))
+            ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor
+        """, (valor,))
         conn.commit()
         cursor.close()
         conn.close()
