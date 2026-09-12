@@ -112,7 +112,7 @@ def prematricula():
     serie = safe_str(dados.get('serie'))
     observacao = safe_str(dados.get('observacao'))
     estrelas = safe_int(dados.get('estrelas'))
-    data_inscricao = safe_str(dados.get('data_inscricao'))
+    data_inscricao = safe_str(dados.get('data_inscricao'))(dados.get('data_inscricao'))
     data_entrega_uniforme = dados.get('data_entrega_uniforme') or None
     status = 'pendente'
 
