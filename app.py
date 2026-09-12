@@ -42,6 +42,70 @@ def get_connection():
 def home():
     return jsonify({'mensagem': 'API da Escolinha do Jacaré funcionando!'})
 
+# ==================== LOGIN ====================
+@app.route('/api/login', methods=['POST'])
+def login():
+    dados = request.json
+    email = dados.get('email', '').strip()
+    senha = dados.get('senha', '').strip()
+    
+    if not email or not senha:
+        return jsonify({'erro': 'Digite e-mail e senha!'}), 400
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Busca o usuário pelo email
+        cursor.execute("""
+            SELECT id, nome, email, senha, cargo, ativo 
+            FROM usuarios 
+            WHERE email = %s
+        """, (email,))
+        
+        usuario = cursor.fetchone()
+        
+        if not usuario:
+            cursor.close()
+            conn.close()
+            return jsonify({'erro': 'E-mail ou senha incorretos'}), 401
+        
+        if not usuario['ativo']:
+            cursor.close()
+            conn.close()
+            return jsonify({'erro': 'Usuário desativado. Fale com o administrador.'}), 401
+        
+        # Verifica a senha (comparação direta)
+        if usuario['senha'] != senha:
+            cursor.close()
+            conn.close()
+            return jsonify({'erro': 'E-mail ou senha incorretos'}), 401
+        
+        # Atualiza último acesso
+        cursor.execute("UPDATE usuarios SET ultimo_acesso = NOW() WHERE id = %s", (usuario['id'],))
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+        
+        print(f"✅ Login: {usuario['nome']} ({usuario['email']})")
+        
+        return jsonify({
+            'mensagem': 'Login realizado com sucesso!',
+            'usuario': {
+                'id': usuario['id'],
+                'nome': usuario['nome'],
+                'email': usuario['email'],
+                'cargo': usuario['cargo']
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Erro no login: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'erro': 'Erro ao fazer login'}), 500
+
 # ==================== PRÉ-MATRÍCULA ====================
 @app.route('/api/prematricula', methods=['POST'])
 def prematricula():
