@@ -494,10 +494,10 @@ def publicar_noticia():
         if imagem_base64:
             try:
                 upload_result = cloudinary.uploader.upload(
-                    imagem_base64,
-                    upload_preset='escolinha_jacare',
-                    folder='noticias'
+                 imagem_base64,
+                 upload_preset='escolinha_jacare'
                 )
+                
                 imagem_url = upload_result.get('secure_url')
                 print(f"✅ Imagem enviada para Cloudinary: {imagem_url}")
             except Exception as e:
