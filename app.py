@@ -703,7 +703,7 @@ def get_notificacoes():
         # 2. Contatos dos últimos 7 dias
         cursor.execute("""
             SELECT COUNT(*) as total FROM contatos 
-            WHERE data_envio > NOW() - INTERVAL '7 days'
+            WHERE data_envio::timestamp > NOW() - INTERVAL '7 days'
         """)
         contatos = cursor.fetchone()['total']
         
